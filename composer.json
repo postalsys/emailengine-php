@@ -1,0 +1,24 @@
+{
+  "name": "postalsys/emailengine-php",
+  "description": "Send and receive emails using EmailEngine.app",
+  "type": "library",
+  "require": {
+    "guzzlehttp/guzzle": ">=7.0.0"
+  },
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Postalsys\\EmailEnginePhp\\": "src/"
+    },
+    "files": [
+      "src/emailengine.php"
+    ]
+  },
+  "authors": [
+    {
+      "name": "Andris Reinman",
+      "email": "andris@reinman.eu"
+    }
+  ],
+  "minimum-stability": "stable"
+}

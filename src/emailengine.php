@@ -9,6 +9,7 @@ class EmailEngine
     private $service_secret;
     public $ee_base_url;
     public $redirect_url;
+    public $http_client;
 
     public function __construct($opts)
     {
@@ -118,32 +119,14 @@ class EmailEngine
             }
         }
 
-        $r = $this->http_client->post($this->ee_base_url . '/v1/settings', [
-            'json' => $settings,
-            'headers' => array('Authorization' => 'Bearer ' . $this->access_token),
-        ]);
+        $data = $this->request('post', '/v1/settings', $settings);
 
-        if ($r->getStatusCode() != 200) {
-            throw new Exception('Invalid HTTP response ' . $r->getStatusCode());
-        }
-
-        $data = json_decode($r->getBody(), true);
         return isset($data['updated']);
     }
 
     public function get_webhook_settings()
     {
-        $r = $this->http_client->get($this->ee_base_url . '/v1/settings?' . "webhooksEnabled=true&webhookEvents=true&webhooks=true&notifyHeaders=true&notifyText=true&notifyTextSize=true", [
-            'headers' => array('Authorization' => 'Bearer ' . $this->access_token),
-        ]);
-
-        if ($r->getStatusCode() != 200) {
-            throw new Exception('Invalid HTTP response ' . $r->getStatusCode());
-        }
-
-        $data = json_decode($r->getBody(), true);
-
-        print_r($data);
+        $data = $this->request('get', '/v1/settings?webhooksEnabled=true&webhookEvents=true&webhooks=true&notifyHeaders=true&notifyText=true&notifyTextSize=true');
 
         $settings = array(
             'enabled' => isset($data['webhooksEnabled']) && !empty($data['webhooksEnabled']) && $data['webhooksEnabled'] ? true : false,
@@ -173,5 +156,25 @@ class EmailEngine
         if (isset($opts['redirect_url']) && !empty($opts['redirect_url'])) {
             $this->redirect_url = $opts['redirect_url'];
         }
+    }
+
+    public function request($method, $path, $payload = false)
+    {
+        $opts = array();
+        if (isset($payload) && !empty($payload)) {
+            $opts["json"] = $payload;
+        }
+
+        $opts['headers'] = array('Authorization' => 'Bearer ' . $this->access_token);
+
+        $r = $this->http_client->request(strtoupper($method), $this->ee_base_url . $path, $opts);
+
+        if ($r->getStatusCode() != 200) {
+            throw new Exception('Invalid HTTP response ' . $r->getStatusCode());
+        }
+
+        $data = json_decode($r->getBody(), true);
+
+        return $data;
     }
 }

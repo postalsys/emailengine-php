@@ -144,3 +144,11 @@ $submit_response = $ee->request('post', "/v1/account/$account_id/submit", array(
 ```
 
 If sending succeeds, then the sent message is also uploaded to the Sent Mail folder.
+
+##### Download an attachment
+
+```php
+$account_id = "example";
+$attachment_id = "AAAAAQAABRQ";
+$ee->download("/v1/account/$account_id/attachment/$attachment_id");
+```

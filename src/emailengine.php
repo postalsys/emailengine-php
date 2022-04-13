@@ -177,4 +177,28 @@ class EmailEngine
 
         return $data;
     }
+
+    public function download($path)
+    {
+        $opts = array('stream' => true);
+        $opts['headers'] = array('Authorization' => 'Bearer ' . $this->access_token);
+
+        $r = $this->http_client->request('GET', $this->ee_base_url . $path, $opts);
+
+        if ($r->getStatusCode() != 200) {
+            throw new Exception('Invalid HTTP response ' . $r->getStatusCode());
+        }
+
+        header("Content-Type: {$r->getHeader('Content-Type')[0]}");
+
+        $cd = $r->getHeader('Content-Disposition');
+        if ($cd && $cd[0]) {
+            header("Content-Disposition: {$cd[0]}");
+        }
+
+        $body = $r->getBody();
+        while (!$body->eof()) {
+            echo $body->read(1024);
+        }
+    }
 }

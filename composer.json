@@ -2,7 +2,14 @@
     "name": "postalsys/emailengine-php",
     "description": "Modern PHP SDK for EmailEngine - Send and receive emails via REST API",
     "type": "library",
-    "keywords": ["email", "imap", "smtp", "emailengine", "api", "sdk"],
+    "keywords": [
+        "email",
+        "imap",
+        "smtp",
+        "emailengine",
+        "api",
+        "sdk"
+    ],
     "homepage": "https://emailengine.app",
     "license": "MIT",
     "authors": [

@@ -150,36 +150,55 @@ jobs:
 
       - name: Start EmailEngine
         run: |
-          # Run EmailEngine in background
+          # Run EmailEngine in background with explicit port mapping
           docker run -d \
             --name emailengine \
-            --network host \
-            -e EENGINE_REDIS="redis://127.0.0.1:6379" \
+            -p 3000:3000 \
+            -e EENGINE_REDIS="redis://172.17.0.1:6379" \
             -e EENGINE_API_PROXY="false" \
-            -e EENGINE_LOG_LEVEL="trace" \
+            -e EENGINE_LOG_LEVEL="info" \
             postalsys/emailengine:latest
 
-          # Wait for EmailEngine to be ready (check if port 3000 is listening)
+          # Wait for EmailEngine to be ready
           echo "Waiting for EmailEngine to start..."
           for i in {1..90}; do
-            # Check if the server is responding (even with 401 means it's up)
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/v1/stats 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" != "000" ]; then
-              echo "EmailEngine is ready! (HTTP $HTTP_CODE)"
-              break
-            fi
-            if [ $i -eq 90 ]; then
-              echo "EmailEngine failed to start"
+            # Check if container is still running
+            if ! docker ps | grep -q emailengine; then
+              echo "EmailEngine container stopped unexpectedly!"
               docker logs emailengine
               exit 1
             fi
-            echo "Waiting... ($i/90)"
+
+            # Check if the server is responding
+            if curl -sf -o /dev/null http://127.0.0.1:3000/v1/stats 2>/dev/null; then
+              echo "EmailEngine is ready!"
+              break
+            fi
+
+            # Also accept 401/403 (means server is up but needs auth)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/v1/stats 2>/dev/null)
+            if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "200" ]; then
+              echo "EmailEngine is ready! (HTTP $HTTP_CODE)"
+              break
+            fi
+
+            if [ $i -eq 90 ]; then
+              echo "EmailEngine failed to start after 3 minutes"
+              echo "Container status:"
+              docker ps -a
+              echo "Container logs:"
+              docker logs emailengine
+              exit 1
+            fi
+            echo "Waiting... ($i/90) - HTTP: ${HTTP_CODE:-none}"
             sleep 2
           done
 
-          # Show container status
+          # Show final status
+          echo "=== Container Status ==="
           docker ps
-          docker logs emailengine | tail -20
+          echo "=== Last 30 log lines ==="
+          docker logs emailengine 2>&1 | tail -30
 
       - name: Generate access token
         id: token

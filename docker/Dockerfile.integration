@@ -20,7 +20,7 @@ RUN apk add --no-cache \
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Install EmailEngine CLI globally for token generation
-RUN npm install -g emailengine
+RUN npm install -g emailengine-app
 
 # Set working directory
 WORKDIR /app

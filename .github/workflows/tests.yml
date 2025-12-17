@@ -131,7 +131,7 @@ jobs:
           node-version: '20'
 
       - name: Install EmailEngine CLI
-        run: npm install -g emailengine
+        run: npm install -g emailengine-app
 
       - name: Get Composer cache directory
         id: composer-cache

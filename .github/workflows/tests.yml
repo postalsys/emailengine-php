@@ -166,21 +166,31 @@ jobs:
             -p 3000:3000 \
             -e EENGINE_REDIS="redis://redis:6379" \
             -e EENGINE_API_PROXY="false" \
-            -e EENGINE_LOG_LEVEL="info" \
+            -e EENGINE_LOG_LEVEL="trace" \
             postalsys/emailengine:latest
+
+          # Give it a moment to start
+          sleep 5
+
+          # Show initial container state
+          echo "=== Initial container state ==="
+          docker ps -a
+          echo "=== Initial EmailEngine logs ==="
+          docker logs emailengine 2>&1 || true
 
           # Wait for EmailEngine to be ready
           echo "Waiting for EmailEngine to start..."
           for i in {1..90}; do
             # Check if container is still running
-            if ! docker ps | grep -q emailengine; then
-              echo "EmailEngine container stopped unexpectedly!"
-              docker logs emailengine
+            CONTAINER_STATUS=$(docker inspect -f '{{.State.Status}}' emailengine 2>/dev/null || echo "not found")
+            if [ "$CONTAINER_STATUS" != "running" ]; then
+              echo "EmailEngine container is not running (status: $CONTAINER_STATUS)"
+              docker logs emailengine 2>&1 || true
               exit 1
             fi
 
             # Check if the server is responding (accept any valid HTTP response)
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/v1/stats 2>/dev/null)
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/v1/stats 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "200" ]; then
               echo "EmailEngine is ready! (HTTP $HTTP_CODE)"
               break
@@ -191,12 +201,19 @@ jobs:
               echo "=== Container status ==="
               docker ps -a
               echo "=== Redis logs ==="
-              docker logs redis
+              docker logs redis 2>&1 || true
               echo "=== EmailEngine logs ==="
-              docker logs emailengine
+              docker logs emailengine 2>&1 || true
               exit 1
             fi
-            echo "Waiting... ($i/90) - HTTP: ${HTTP_CODE:-connecting}"
+
+            # Show logs every 15 iterations
+            if [ $((i % 15)) -eq 0 ]; then
+              echo "=== EmailEngine logs at iteration $i ==="
+              docker logs emailengine 2>&1 | tail -10 || true
+            fi
+
+            echo "Waiting... ($i/90) - HTTP: $HTTP_CODE"
             sleep 2
           done
 
@@ -204,7 +221,7 @@ jobs:
           echo "=== Services Running ==="
           docker ps
           echo "=== EmailEngine logs ==="
-          docker logs emailengine 2>&1 | tail -20
+          docker logs emailengine 2>&1 | tail -30
 
       - name: Generate access token
         id: token

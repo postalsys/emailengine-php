@@ -83,8 +83,9 @@ class SettingsIntegrationTest extends IntegrationTestCase
 
         $this->assertTrue($settings['enabled']);
         $this->assertEquals($testUrl, $settings['url']);
-        $this->assertEquals($testEvents, $settings['events']);
-        $this->assertEquals(['X-Custom-Header'], $settings['headers']);
+        // Use assertEqualsCanonicalizing for arrays (order may differ)
+        $this->assertEqualsCanonicalizing($testEvents, $settings['events']);
+        $this->assertEqualsCanonicalizing(['X-Custom-Header'], $settings['headers']);
         $this->assertEquals(1024, $settings['text']);
     }
 

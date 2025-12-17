@@ -1,3 +1,22 @@
+# Dependencies
 composer.lock
 vendor/
 
+# Testing
+.phpunit.cache/
+.phpunit.result.cache
+coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PHPStan
+phpstan.neon.local

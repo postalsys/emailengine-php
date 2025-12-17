@@ -1,0 +1,46 @@
+# Dockerfile for integration testing with EmailEngine
+# Includes tools needed to generate tokens via EmailEngine CLI
+
+ARG PHP_VERSION=8.3
+
+FROM php:${PHP_VERSION}-cli-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    git \
+    unzip \
+    libzip-dev \
+    nodejs \
+    npm \
+    bash \
+    curl \
+    && docker-php-ext-install zip
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Install EmailEngine CLI globally for token generation
+RUN npm install -g emailengine
+
+# Set working directory
+WORKDIR /app
+
+# Copy composer files first for caching
+COPY composer.json composer.lock ./
+
+# Install dependencies
+ENV COMPOSER_NO_DEV=0
+RUN composer install --no-scripts --no-autoloader
+
+# Copy the rest of the application
+COPY . .
+
+# Generate autoloader
+RUN composer dump-autoload --optimize
+
+# Copy entrypoint script
+COPY docker/integration-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/integration-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/integration-entrypoint.sh"]
+CMD ["./vendor/bin/phpunit", "--testsuite", "integration"]

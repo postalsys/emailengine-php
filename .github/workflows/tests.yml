@@ -1,0 +1,249 @@
+name: Tests
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: [master, main]
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================
+  # Unit Tests - Multiple PHP Versions
+  # ==========================================================================
+  unit-tests:
+    name: Unit Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2', '8.3', '8.4']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: json, mbstring
+          coverage: xdebug
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php-${{ matrix.php }}-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-php-${{ matrix.php }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run unit tests
+        run: ./vendor/bin/phpunit --testsuite unit
+
+  # ==========================================================================
+  # Code Quality
+  # ==========================================================================
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.3-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Check code style (PSR-12)
+        run: ./vendor/bin/phpcs --standard=PSR12 src
+        continue-on-error: true
+
+      - name: Run PHPStan
+        run: ./vendor/bin/phpstan analyse src --level=6
+        continue-on-error: true
+
+  # ==========================================================================
+  # Integration Tests with EmailEngine
+  # ==========================================================================
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests  # Only run if unit tests pass
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring
+          tools: composer:v2
+
+      - name: Setup Node.js (for EmailEngine CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install EmailEngine CLI
+        run: npm install -g emailengine
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.3-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Start EmailEngine
+        run: |
+          # Run EmailEngine in background
+          docker run -d \
+            --name emailengine \
+            --network host \
+            -e EENGINE_REDIS="redis://127.0.0.1:6379" \
+            -e EENGINE_API_PROXY="false" \
+            -e EENGINE_LOG_LEVEL="warn" \
+            postalsys/emailengine:latest
+
+          # Wait for EmailEngine to be ready
+          echo "Waiting for EmailEngine to start..."
+          for i in {1..60}; do
+            if curl -sf http://127.0.0.1:3000/v1/stats > /dev/null 2>&1; then
+              echo "EmailEngine is ready!"
+              break
+            fi
+            if [ $i -eq 60 ]; then
+              echo "EmailEngine failed to start"
+              docker logs emailengine
+              exit 1
+            fi
+            sleep 1
+          done
+
+      - name: Generate access token
+        id: token
+        run: |
+          TOKEN=$(emailengine tokens issue \
+            -d "GitHub Actions Test" \
+            -s "*" \
+            --dbs.redis="redis://127.0.0.1:6379" 2>/dev/null | grep -E '^[a-f0-9]{64}$' | tail -n1)
+
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to generate token"
+            exit 1
+          fi
+
+          echo "token=${TOKEN}" >> $GITHUB_OUTPUT
+          echo "Token generated: ${TOKEN:0:16}..."
+
+      - name: Run integration tests
+        env:
+          EMAILENGINE_ACCESS_TOKEN: ${{ steps.token.outputs.token }}
+          EMAILENGINE_BASE_URL: http://127.0.0.1:3000
+        run: ./vendor/bin/phpunit --testsuite integration
+
+      - name: Stop EmailEngine
+        if: always()
+        run: |
+          docker stop emailengine || true
+          docker rm emailengine || true
+
+  # ==========================================================================
+  # Test Coverage (on main branch only)
+  # ==========================================================================
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    needs: unit-tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: json, mbstring
+          coverage: xdebug
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-php-8.3-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Generate coverage report
+        run: ./vendor/bin/phpunit --testsuite unit --coverage-clover coverage.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+        continue-on-error: true

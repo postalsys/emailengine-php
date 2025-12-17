@@ -1,0 +1,125 @@
+# Docker Compose for EmailEngine PHP SDK Development and Testing
+#
+# Usage:
+#   docker compose up -d                    # Start EmailEngine + Redis
+#   docker compose run --rm test            # Run unit tests
+#   docker compose run --rm integration     # Run integration tests
+#   docker compose down -v                  # Stop and clean up
+
+services:
+  # Redis - required by EmailEngine
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # EmailEngine - email gateway service
+  emailengine:
+    image: postalsys/emailengine:latest
+    ports:
+      - "3000:3000"
+      - "2525:2525"   # SMTP
+      - "9993:9993"   # IMAP proxy
+    environment:
+      # Redis connection
+      EENGINE_REDIS: "redis://redis:6379"
+      # Disable TLS for local testing
+      EENGINE_API_PROXY: "false"
+      # Enable verbose logging
+      EENGINE_LOG_LEVEL: "trace"
+      # Disable rate limiting for tests
+      EENGINE_API_RATE_LIMIT: "0"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/v1/stats"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Unit tests - runs with mocked HTTP responses
+  test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+      args:
+        PHP_VERSION: "8.3"
+    volumes:
+      - .:/app
+      - /app/vendor
+    command: ["./vendor/bin/phpunit", "--testsuite", "unit"]
+
+  # Integration tests - runs against real EmailEngine
+  integration:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.integration
+      args:
+        PHP_VERSION: "8.3"
+    volumes:
+      - .:/app
+      - /app/vendor
+    environment:
+      REDIS_URL: "redis://redis:6379"
+      EMAILENGINE_URL: "http://emailengine:3000"
+    depends_on:
+      emailengine:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # PHP 8.1 tests
+  test-php81:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+      args:
+        PHP_VERSION: "8.1"
+    volumes:
+      - .:/app
+      - /app/vendor
+
+  # PHP 8.2 tests
+  test-php82:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+      args:
+        PHP_VERSION: "8.2"
+    volumes:
+      - .:/app
+      - /app/vendor
+
+  # PHP 8.3 tests
+  test-php83:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+      args:
+        PHP_VERSION: "8.3"
+    volumes:
+      - .:/app
+      - /app/vendor
+
+  # PHP 8.4 tests
+  test-php84:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.test
+      args:
+        PHP_VERSION: "8.4"
+    volumes:
+      - .:/app
+      - /app/vendor
+
+volumes:
+  redis_data:

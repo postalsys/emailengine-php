@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         requireCoverageMetadata="false"
+         beStrictAboutCoverageMetadata="false"
+         beStrictAboutOutputDuringTests="true"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="unit">
+            <directory>tests</directory>
+            <exclude>tests/Integration</exclude>
+        </testsuite>
+        <testsuite name="integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
+        <testsuite name="default">
+            <directory>tests</directory>
+            <exclude>tests/Integration</exclude>
+        </testsuite>
+    </testsuites>
+
+    <source restrictDeprecations="true" restrictNotices="true" restrictWarnings="true">
+        <include>
+            <directory>src</directory>
+        </include>
+        <exclude>
+            <file>src/LegacyEmailEngine.php</file>
+        </exclude>
+    </source>
+
+    <php>
+        <!-- Integration test configuration (can be overridden by environment) -->
+        <env name="EMAILENGINE_BASE_URL" value="http://localhost:3000"/>
+        <env name="EMAILENGINE_ACCESS_TOKEN" value=""/>
+        <env name="EMAILENGINE_REDIS_URL" value="redis://localhost:6379"/>
+    </php>
+</phpunit>

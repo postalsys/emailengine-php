@@ -218,34 +218,67 @@ class EmailEngine
     /**
      * Generate a redirect URL for EmailEngine's hosted authentication page
      *
+     * This method calls the EmailEngine API to generate a secure authentication URL
+     * with server-side nonce and timestamp for replay attack protection.
+     *
      * @param array{
      *     account?: string|null,
      *     name?: string,
      *     email?: string,
-     *     redirectUrl?: string
+     *     redirectUrl?: string,
+     *     type?: string,
+     *     delegated?: bool,
+     *     syncFrom?: string,
+     *     notifyFrom?: string,
+     *     subconnections?: array<string>,
+     *     path?: string|array<string>
      * } $data Authentication data
-     * @throws EmailEngineException If service secret is not configured
+     * @throws EmailEngineException If the API request fails
      */
     public function getAuthenticationUrl(array $data = []): string
     {
-        if ($this->serviceSecret === null) {
+        $data['redirectUrl'] ??= $this->redirectUrl;
+
+        if (empty($data['redirectUrl'])) {
             throw new EmailEngineException(
-                message: 'Service secret is required for generating authentication URLs'
+                message: 'redirectUrl is required for generating authentication URLs'
             );
         }
 
-        // Use provided redirectUrl or fall back to default
-        if (empty($data['redirectUrl']) && $this->redirectUrl !== null) {
-            $data['redirectUrl'] = $this->redirectUrl;
+        $response = $this->httpClient->post('/v1/authentication/form', $data);
+
+        if (!isset($response['url'])) {
+            throw new EmailEngineException(
+                message: 'Invalid response from authentication form API: missing url field'
+            );
         }
 
-        $dataJson = json_encode($data, JSON_THROW_ON_ERROR);
-        $signature = $this->signRequest($dataJson, $this->serviceSecret);
+        return $response['url'];
+    }
 
-        return $this->baseUrl . '/accounts/new?data=' .
-            $this->base64EncodeUrlsafe($dataJson) .
-            '&sig=' .
-            $this->base64EncodeUrlsafe($signature);
+    /**
+     * Verify a webhook signature from EmailEngine
+     *
+     * EmailEngine signs webhooks with the X-EE-Wh-Signature header using
+     * HMAC-SHA256 of the raw request body, base64url encoded.
+     *
+     * @param string $body The raw webhook request body
+     * @param string $signature The signature from X-EE-Wh-Signature header
+     * @return bool True if the signature is valid
+     * @throws EmailEngineException If service secret is not configured
+     */
+    public function verifyWebhookSignature(string $body, string $signature): bool
+    {
+        if ($this->serviceSecret === null) {
+            throw new EmailEngineException(
+                message: 'Service secret is required for verifying webhook signatures'
+            );
+        }
+
+        $computed = hash_hmac('sha256', $body, $this->serviceSecret, true);
+        $computedBase64 = $this->base64EncodeUrlsafe($computed);
+
+        return hash_equals($computedBase64, $signature);
     }
 
     /**

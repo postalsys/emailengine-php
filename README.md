@@ -49,8 +49,8 @@ $result = $client->messages->submit('account-id', [
 $client = new EmailEngine(
     accessToken: 'your-access-token',      // Required: API access token
     baseUrl: 'http://localhost:3000',       // EmailEngine base URL (default: localhost:3000)
-    serviceSecret: 'your-service-secret',   // For hosted authentication URLs
-    redirectUrl: 'http://your-app/callback', // Default redirect URL for auth
+    serviceSecret: 'your-service-secret',   // For verifying webhook signatures
+    redirectUrl: 'http://your-app/callback', // Default redirect URL for hosted auth
     timeout: 30,                            // Request timeout in seconds
 );
 ```
@@ -266,17 +266,16 @@ $client->settings->setWebhooks([
 
 ### Hosted Authentication
 
-Generate URLs for EmailEngine's hosted authentication form:
+Generate URLs for EmailEngine's hosted authentication form. This method calls the EmailEngine API to generate a secure authentication URL with server-side nonce and timestamp for replay attack protection.
 
 ```php
 $client = new EmailEngine(
     accessToken: 'your-token',
     baseUrl: 'http://localhost:3000',
-    serviceSecret: 'your-service-secret',
     redirectUrl: 'http://your-app/auth-callback',
 );
 
-// Generate auth URL
+// Generate auth URL with basic options
 $authUrl = $client->getAuthenticationUrl([
     'account' => null, // null = auto-generate account ID
     'name' => 'User Name',
@@ -285,6 +284,62 @@ $authUrl = $client->getAuthenticationUrl([
 
 // Redirect user to $authUrl
 header('Location: ' . $authUrl);
+```
+
+#### Available Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `account` | string\|null | Account ID (null to auto-generate) |
+| `name` | string | Display name for the account |
+| `email` | string | Email address hint |
+| `redirectUrl` | string | Override default redirect URL |
+| `type` | string | Account type (e.g., 'imap', 'gmail', 'outlook') |
+| `delegated` | bool | Enable delegated access |
+| `syncFrom` | string | ISO 8601 date to sync messages from |
+| `notifyFrom` | string | ISO 8601 date to send notifications from |
+| `subconnections` | array | List of shared mailboxes to connect |
+| `path` | string\|array | Mailbox path(s) to monitor |
+
+```php
+// Example with all parameters
+$authUrl = $client->getAuthenticationUrl([
+    'account' => 'user-123',
+    'name' => 'John Doe',
+    'email' => 'john@example.com',
+    'type' => 'gmail',
+    'delegated' => true,
+    'syncFrom' => '2024-01-01T00:00:00Z',
+    'notifyFrom' => '2024-01-01T00:00:00Z',
+    'subconnections' => ['Shared Mailbox'],
+    'path' => ['INBOX', 'Sent'],
+]);
+```
+
+### Webhook Signature Verification
+
+Verify webhook signatures to ensure requests are authentically from EmailEngine. Requires the `serviceSecret` to be configured.
+
+```php
+$client = new EmailEngine(
+    accessToken: 'your-token',
+    baseUrl: 'http://localhost:3000',
+    serviceSecret: 'your-service-secret',
+);
+
+// Get the raw request body and signature header
+$body = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_EE_WH_SIGNATURE'] ?? '';
+
+if ($client->verifyWebhookSignature($body, $signature)) {
+    // Signature is valid - process the webhook
+    $payload = json_decode($body, true);
+    // ... handle webhook event
+} else {
+    // Invalid signature - reject the request
+    http_response_code(401);
+    exit('Invalid signature');
+}
 ```
 
 ### Outbox Management

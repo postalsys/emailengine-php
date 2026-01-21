@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/postalsys/emailengine-php/compare/v1.2.1...v1.3.0) (2026-01-21)
+
+
+### Features
+
+* refactor getAuthenticationUrl to use API and add webhook signature verification ([f2bc07f](https://github.com/postalsys/emailengine-php/commit/f2bc07fd2a20049ad3c80dfe5baefce16af9e34d))
+
 ## [1.2.1](https://github.com/postalsys/emailengine-php/compare/v1.2.0...v1.2.1) (2025-12-17)
 
 
